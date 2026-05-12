@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(osascript -e 'tell application \"Mail\"*)",
+      "Bash(mdfind:*)"
+    ]
+  }
+}
