@@ -1,0 +1,45 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(scp:*)",
+      "Bash(rsync:*)",
+      "Bash(defaults write:*)",
+      "Bash(launchctl:*)",
+      "Bash(diskutil:*)",
+      "Bash(security:*)",
+      "Write(/etc/**)",
+      "Write(/Library/**)",
+      "Write(/System/**)",
+      "Write(/usr/**)",
+      "Write(~/Library/**)",
+      "Edit(/etc/**)",
+      "Edit(/Library/**)",
+      "Edit(/System/**)",
+      "Edit(/usr/**)",
+      "Edit(~/Library/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "python3 ~/.claude/hooks/destructive-bash-guard.py" }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "python3 ~/.claude/hooks/working-dir-scope-guard.py" }
+        ]
+      }
+    ]
+  }
+}
