@@ -1,0 +1,10 @@
+{
+  "id": "tool-google-calendar",
+  "name": "Google Calendar",
+  "category": "tools",
+  "description": "Read events, create events, find free time. Uses the gws-calendar skills + Google Calendar MCP.",
+  "recommended": false,
+  "exclusive_group": null,
+  "depends_on": [],
+  "conflicts_with": []
+}
