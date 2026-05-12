@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "deny": [
+      "Write(/etc/**)",
+      "Write(/Library/**)",
+      "Write(/System/**)",
+      "Write(/usr/**)",
+      "Write(~/Library/**)",
+      "Edit(/etc/**)",
+      "Edit(/Library/**)",
+      "Edit(/System/**)",
+      "Edit(/usr/**)",
+      "Edit(~/Library/**)"
+    ]
+  }
+}
