@@ -1,15 +1,17 @@
 ---
 name: setup
-description: Use when the user wants to install, reconfigure, or update their claude-personal-starter components. Walks them through choosing components via checkboxes and applies the changes via tools/install.
+description: Use when the user wants to install, reconfigure, or update their claude-personal-starter components. Walks them through choosing components via checkboxes and applies the changes by editing their CLAUDE.md, settings.json, and copying skills/hooks directly.
 ---
 
 # /setup — claude-personal-starter
 
-You are running the modular Claude starter setup. The user wants to pick (or re-pick) which components to install. The repo is cloned at `~/.claude-personal-starter/`. The installer CLI is at `~/.claude-personal-starter/tools/install`.
+You are walking the user through installing or reconfiguring components from `claude-personal-starter`. The repo is cloned at `~/.claude-personal-starter/`. There is no Python CLI — **you do the work directly** using your normal Read, Edit, Write, and Bash tools.
 
-## Process
+This skill is rerunnable. The user can `/setup` any time to add or remove components.
 
-### 1. Refresh the source
+---
+
+## Step 1 — Refresh the source
 
 Run:
 
@@ -17,88 +19,89 @@ Run:
 git -C ~/.claude-personal-starter pull --ff-only
 ```
 
-If it fails (no network, conflict), continue with whatever's on disk and tell the user.
+If it fails (no network, conflict, dirty tree), continue with whatever's on disk and tell the user briefly.
 
-### 2. Load the catalog
-
-Run:
+If `~/.claude-personal-starter/` doesn't exist at all, stop and tell the user to run the bootstrap:
 
 ```
-~/.claude-personal-starter/tools/install list-components --json
+curl -fsSL https://raw.githubusercontent.com/Tugboat-Solutions-Inc/claude-personal-starter/main/bootstrap.sh | sh
 ```
 
-Parse the JSON. Group by `category`. Note which are `installed: true`.
+---
 
-### 3. Walk the user through each category
+## Step 2 — Discover components
 
-For each category, present the options via `AskUserQuestion`. Order: `safety`, `working-directory`, `tools`, `skills`, `identity`.
+List directories under `~/.claude-personal-starter/components/`. For each one, Read its `component.json` to get `id`, `name`, `category`, `description`, `recommended`, `exclusive_group`, and `depends_on` (optional, defaults to empty).
 
-**Safety** (exclusive group — radio behavior, single-select):
-- Question: "Pick a safety profile."
-- Header: "Safety"
-- multiSelect: false
-- Options: one per safety component, with the component's `description` as the option description. Pre-select the currently-installed one (if any) or the `recommended: true` one as the first option.
+Group components by `category`. Standard categories in display order:
 
-**Working directory** (required):
-- Question: "Where should your working directory be?"
-- Default to `~/Work` if no answer. The agent can either state the default and proceed, or ask the user for an override via a free-text prompt.
+1. `safety` (exclusive — pick one)
+2. `working-directory`
+3. `tools` (multi-select)
+4. `skills` (multi-select)
+5. `identity`
 
-**Tools** (multi-select, may need multiple questions if >4):
-- Question: "Which tools do you want? (Tick all that apply.)"
-- Header: "Tools"
-- multiSelect: true
-- Options: every component in the `tools` category. Pre-tick currently-installed.
-- If more than 4 options, split into "Email tools" and "Calendar/Drive/Docs" sub-questions.
+If you find a category you don't recognize, render it after the standard ones with `multiSelect: true` and proceed.
 
-**Skills** (multi-select):
-- Question: "Which workflow skills do you want?"
-- Header: "Skills"
-- multiSelect: true
-- Options: every component in the `skills` category. Pre-tick installed.
+Detect what's already installed by reading the user's `~/.claude/CLAUDE.md` (if present) and grepping for each component's `claude-md.md` section heading. The first `## ` line of each component's `claude-md.md` is the marker — if it appears in the user's CLAUDE.md, that component is currently applied.
 
-**Identity** (single-select):
-- Question: "Want to add a 'who I am' note to your CLAUDE.md?"
-- Header: "Identity"
-- multiSelect: false
-- Options: ["Yes — describe me", "Skip — I'll edit CLAUDE.md myself later"]
-- If "Yes," ask one follow-up open-ended question: "In a sentence or two, who are you and what do you mostly use Claude for?"
+---
 
-### 4. Compute diff
+## Step 3 — Walk the user through the picker
 
-- `currently_installed` = set of installed ids from step 2.
-- `requested` = union of every component the user ticked.
-- `to_add` = `requested - currently_installed`
-- `to_remove` = `currently_installed - requested`
+For each category, call `AskUserQuestion`:
 
-### 5. Apply
+- **Safety**: `multiSelect: false`. Options are the safety components in that category. Pre-select the currently-installed one if any; otherwise the `recommended: true` one. Description on each option = the component's `description`.
+- **Working directory**: ask one open-ended question via the text-input fallback (use a single option labeled with the default `~/Work` plus an "Other" path the user can type). Default: `~/Work`. Resolve `~` to an absolute path before using it (`os.path.expanduser` equivalent — just shell-expand or call `bash -c 'echo ~/Work'` via Bash).
+- **Tools**: `multiSelect: true`. Options are every component in the `tools` category. Pre-tick currently-installed. If there are more than 4, split into two questions ("Email tools", "Calendar/Drive/Docs/etc.") — `AskUserQuestion` caps at 4 options per question.
+- **Skills**: `multiSelect: true`. Same pattern.
+- **Identity**: `multiSelect: false`. Options: ["Yes — describe me", "Skip — I'll edit CLAUDE.md myself later"]. If "Yes," follow up with one open-ended question: "In a sentence or two, who are you and what do you mostly use Claude for?"
 
-Run:
+Compute:
 
-```
-~/.claude-personal-starter/tools/install apply \
-  --add "<comma-separated to_add>" \
-  --remove "<comma-separated to_remove>" \
-  --working-dir "<path or omit>" \
-  --identity-text "<text or omit>"
-```
+- `to_add` = picked components that aren't currently installed
+- `to_remove` = currently-installed components that the user unticked
 
-Show the output to the user.
+---
 
-### 6. Show post-install actions
+## Step 4 — Apply changes
 
-For every newly-added component, read `~/.claude-personal-starter/tools/components/<id>/setup-notes.md` if it exists, and concatenate. Show the result as "Next steps:" — these are typically MCP `authenticate` commands the user needs to run in a fresh session.
+For each component in `to_remove` (process removes before adds):
 
-### 7. Confirm
+1. **CLAUDE.md**: Read `~/.claude/CLAUDE.md`. Read the component's `claude-md.md` to find its section heading. Remove that section from the user's CLAUDE.md (from the heading through the line before the next `## ` heading, or end of file).
+2. **settings.json**: Read the component's `settings.json` (if present). Read the user's `~/.claude/settings.json`. Remove the component's contributions: strip its entries from `permissions.allow` and `permissions.deny`; strip its hook commands from any matcher group (and drop matcher groups whose `hooks` list becomes empty); remove its `env` keys.
+3. **Hooks**: For each file in the component's `hooks/`, delete the corresponding `~/.claude/hooks/<basename>`.
+4. **Skills**: For each directory in the component's `skills/`, delete the corresponding `~/.claude/skills/<dirname>`.
 
-Print a one-line summary:
+For each component in `to_add`:
+
+1. **Resolve dependencies**: if the component has `depends_on`, ensure those components are also being installed (auto-add them).
+2. **CLAUDE.md**: Read the component's `claude-md.md`. Substitute `<<IDENTITY>>` with the user's identity text (if applicable) and `<<WORKING_DIR>>` with the absolute working directory path. Read the user's `~/.claude/CLAUDE.md` (initialize empty if absent). If the component's section heading is already present, replace that section; otherwise append to the end with one blank line before. Write back.
+3. **settings.json**: Read the component's `settings.json` (if present). Read the user's `~/.claude/settings.json` (initialize from this base if absent: `{"$schema": "https://json.schemastore.org/claude-code-settings.json", "permissions": {"defaultMode": "auto", "allow": [], "deny": []}, "hooks": {}, "env": {}}`). Merge: union `allow` and `deny` (deduped); for `hooks`, find matching matcher groups and union their `hooks` arrays by command, otherwise add the matcher group; shallow-merge `env`. Write back.
+4. **Hooks**: For each file in the component's `hooks/`, Read it, substitute `<<WORKING_DIR>>` with the absolute working directory path if present, write to `~/.claude/hooks/<basename>`, `chmod +x`.
+5. **Skills**: Recursively copy each directory in the component's `skills/` into `~/.claude/skills/`.
+
+---
+
+## Step 5 — Show next steps
+
+For every component in `to_add`, Read its `INSTALL.md` if it exists. Concatenate them. Present to the user under the heading "**Next steps:**". These are usually OAuth or MCP authenticate commands the user runs from a fresh Claude session.
+
+Then print a one-line summary of what changed:
 
 ```
-Done. Added: tool-gmail, skill-weekly-digest. Removed: (none). Currently installed: safety-strict, working-directory, identity-block, tool-gmail, tool-google-calendar, skill-email-triage, skill-weekly-digest.
+Done. Added: <list>. Removed: <list>. Currently installed: <list>.
 ```
+
+If the user added or removed `safety-strict` or `working-directory`, mention that they should restart Claude Code so the hooks reload.
+
+---
 
 ## Edge cases
 
-- **First-time install (nothing in manifest):** Treat every option as un-ticked. Proceed normally.
-- **No `~/.claude-personal-starter/` directory:** Tell the user to re-run the curl bootstrap. Stop.
-- **`tools/install` exits with a non-zero status:** Show stderr to the user, do not claim success.
-- **User aborts via Ctrl-C in the middle:** Whatever has been applied via earlier `apply` calls is persistent; explain that re-running `/setup` will pick up where they left off.
+- **Empty `~/.claude/CLAUDE.md`**: treat as starting from scratch.
+- **User's CLAUDE.md has unrelated content above your sections**: leave it alone. Append at the end.
+- **JSON parse error in user's settings.json**: stop. Tell the user the file is malformed and ask them to fix it (or back it up and let you regenerate from scratch).
+- **Component file missing on disk** (e.g., `claude-md.md` not present): just skip that step for that component — not all components have all files.
+- **`AskUserQuestion` 4-option cap**: split into multiple questions for any category with >4 components.
+- **`<<WORKING_DIR>>` not yet decided when applying a hook**: ask the user for the working directory first, before any hook copying.

@@ -1,0 +1,8 @@
+{
+  "id": "working-directory",
+  "name": "Working directory",
+  "category": "working-directory",
+  "description": "Sets your working directory (default ~/Work). Documents the convention in CLAUDE.md so the agent defaults to that path when you say 'put this somewhere'.",
+  "recommended": true,
+  "exclusive_group": null
+}

@@ -1,0 +1,8 @@
+{
+  "id": "tool-gmail",
+  "name": "Gmail",
+  "category": "tools",
+  "description": "Gmail send/read/triage. Uses the standard Google Workspace MCP that ships with Claude Code; no skills are bundled here. After install you run the Gmail authenticate command from a fresh session.",
+  "recommended": false,
+  "exclusive_group": null
+}

@@ -1,0 +1,9 @@
+{
+  "id": "safety-strict",
+  "name": "Strict safety",
+  "category": "safety",
+  "description": "Hooks block destructive shell (rm -rf, sudo, force pushes, defaults write, launchctl) and network egress (curl, wget, scp, rsync). Working-directory hook fences Write/Edit to your working directory. System path writes denied. Recommended for non-technical users.",
+  "recommended": true,
+  "exclusive_group": "safety",
+  "depends_on": ["working-directory"]
+}

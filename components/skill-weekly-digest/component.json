@@ -1,0 +1,8 @@
+{
+  "id": "skill-weekly-digest",
+  "name": "Weekly digest",
+  "category": "skills",
+  "description": "Custom skill that summarizes this week's meetings, unread email count, and standout messages. Requires at least one email tool and one calendar tool to be useful.",
+  "recommended": false,
+  "exclusive_group": null
+}

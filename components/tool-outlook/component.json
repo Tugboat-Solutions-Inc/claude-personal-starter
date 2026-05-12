@@ -1,0 +1,8 @@
+{
+  "id": "tool-outlook",
+  "name": "Outlook (via Apple Mail)",
+  "category": "tools",
+  "description": "Read and draft Microsoft 365 / Outlook email via Apple Mail. Requires your M365 account added to Apple Mail. Claude reads from ~/Library/Mail and drafts via osascript.",
+  "recommended": false,
+  "exclusive_group": null
+}

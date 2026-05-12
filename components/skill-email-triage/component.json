@@ -1,0 +1,8 @@
+{
+  "id": "skill-email-triage",
+  "name": "Email triage",
+  "category": "skills",
+  "description": "Custom skill that produces an inbox summary grouped by urgency and sender. Works with whichever email tools you have installed (Gmail and/or Outlook).",
+  "recommended": false,
+  "exclusive_group": null
+}

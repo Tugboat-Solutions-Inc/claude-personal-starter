@@ -1,0 +1,8 @@
+{
+  "id": "safety-chill",
+  "name": "Chill safety",
+  "category": "safety",
+  "description": "System paths (/etc, /Library, /System, /usr, ~/Library) denied for Write/Edit. Destructive shell and network egress allowed. Recommended for technical users who want freedom.",
+  "recommended": false,
+  "exclusive_group": "safety"
+}

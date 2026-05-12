@@ -1,0 +1,8 @@
+{
+  "id": "tool-google-calendar",
+  "name": "Google Calendar",
+  "category": "tools",
+  "description": "Read events, create events, find free time. Uses the standard gws-calendar skills + Google Calendar MCP that ship with Claude Code.",
+  "recommended": false,
+  "exclusive_group": null
+}

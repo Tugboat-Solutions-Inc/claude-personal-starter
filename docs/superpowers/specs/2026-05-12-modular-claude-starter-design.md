@@ -1,264 +1,163 @@
-# Modular Claude Code Starter — Design
+# Modular Claude Starter — Design (v2)
 
 **Status:** Approved (design phase)
 **Author:** Aaron
 **Date:** 2026-05-12
+**Supersedes:** v1 (recommendation-set rewrite — see git history for the over-engineered runtime version)
 
 ---
 
 ## Problem
 
-Aaron has a Claude Code setup that does a lot of useful work (Gmail triage, Google Workspace flows, Tugboat business work, dev workflows). Several different people would benefit from chunks of it:
+Aaron has Claude Code patterns that several different audiences would benefit from (personal-use friends, Tugboat employees, attorneys via the existing attorney-claude-starter). He wants to share those patterns without:
 
-- **Personal-use friends** ("Chris-types") — want the general personal-assistant pieces (Gmail, Calendar, Docs, weekly digest), nothing Tugboat or dev.
-- **Tugboat employees** — want personal pieces plus Tugboat business context (brand voice, claims terminology, Linear), no dev stack.
-- **Tugboat developers** — already served by `tugboat-tools` (Michael Riffle's git-pull installer), no new work needed.
-- **Specialized variants** like `attorney-claude-starter` for Cameron's dad — same skeleton, domain-specific overlay.
-
-The existing pieces don't compose. `pi-agent-bundle` is a zip with the Pi runtime; `attorney-claude-starter` is a hand-delivered folder; `tugboat-tools` is git-managed but Tugboat-internal. None of them let someone say "I use Gmail and Calendar but not Outlook, give me strict safety, skip the Tugboat stuff."
+- Maintaining a runtime that owns the user's `~/.claude/` directory.
+- Bundling Claude Code itself, OAuth flows, MCP server installs, or any official Anthropic install path.
+- Tracking what's installed, deep-merging settings, or otherwise pretending to be a package manager.
 
 ## Goal
 
-A single public repo, installable via one curl line, that lets any user pick exactly which components they want via an in-Claude checkbox interface. Updates flow through git pull. Users can rerun setup any time to add or remove components.
+A repo of **recommendations** the user's own Claude agent applies. The user installs Claude Code through the official Anthropic flow, runs `claude`, types `/setup`, and the agent walks them through a checklist of optional configuration pieces. The agent then edits the user's `~/.claude/CLAUDE.md`, `~/.claude/settings.json`, copies any custom skills, and tells the user which official commands to run for OAuth / MCP setup. From there the user iterates with their agent.
 
 ## Non-Goals
 
-- No personas, presets, or "I'm a {role}" shortcuts. The picker is the interface; users tick what they want.
-- No TUI library (`gum`, `whiptail`, `dialog`). Claude itself is the TUI via `AskUserQuestion`.
-- No bundling of the Pi runtime, Claude Code installer, or Anthropic auth. The bootstrap assumes Claude Code is already installed and authenticated.
-- No replacement for `tugboat-tools`. Developers continue using that. This starter is for non-dev users.
+- No Python CLI, no manifest, no version tracking, no contribution-tracking-for-undo, no end-to-end install/remove orchestration. The agent applies recommendations using its existing Read/Edit/Bash tools; the user re-runs `/setup` to change their mind.
+- No official-install wrapping. Claude Code OAuth, MCP server installation, Google Workspace authentication, etc. — all handled through the user's normal Claude tooling and Anthropic-provided commands. We just point at them.
+- No personas or presets. Pure modular checklist.
 
-## High-Level Architecture
+## Architecture
 
 ```
-github.com/<org>/claude-personal-starter
-├── bootstrap.sh                  ← curl … | sh entry point
-├── tools/
-│   ├── install.sh                ← git-pull installer with versioned components + manifest (adapted from tugboat-tools)
-│   └── components/               ← every available component lives here
-│       ├── safety-strict/
-│       ├── safety-chill/
-│       ├── tool-outlook/
-│       ├── tool-gmail/
-│       ├── tool-google-calendar/
-│       ├── …
-│       ├── skill-email-triage/
-│       ├── skill-weekly-digest/
-│       └── …
+github.com/Tugboat-Solutions-Inc/claude-personal-starter
+├── bootstrap.sh                  ← curl entry point: clone repo + drop /setup skill
+├── components/                   ← every recommendation lives here
+│   ├── safety-strict/
+│   │   ├── component.json        ← picker metadata: id, name, category, description, recommended, exclusive_group
+│   │   ├── claude-md.md          ← text to add to user's CLAUDE.md (optional)
+│   │   ├── settings.json         ← settings to merge into user's settings.json (optional)
+│   │   ├── hooks/                ← hook scripts to copy into ~/.claude/hooks/ (optional)
+│   │   └── INSTALL.md            ← post-install commands the user/agent runs (optional)
+│   ├── tool-gmail/
+│   │   ├── component.json
+│   │   ├── claude-md.md
+│   │   └── INSTALL.md            ← e.g., "run @claude_ai_Gmail authenticate"
+│   ├── skill-email-triage/
+│   │   ├── component.json
+│   │   ├── claude-md.md
+│   │   └── skills/
+│   │       └── email-triage/SKILL.md
+│   └── ... (and so on)
 ├── skills/
-│   └── setup/                    ← the in-Claude TUI
-│       └── SKILL.md
+│   └── setup/SKILL.md            ← the in-Claude TUI driver
 ├── docs/
-│   ├── ONBOARDING.md             ← getting Claude Code installed (curl + OAuth), then run /setup
-│   └── components.md             ← human-readable catalog of every component
-└── README.md
+│   ├── ONBOARDING.md
+│   └── components.md
+├── LICENSE
+├── README.md
+└── .gitignore
 ```
 
 **Two-stage install:**
 
-1. **Bootstrap** (one curl line). Drops the `setup` skill into `~/.claude/skills/setup/` and nothing else. Idempotent.
-2. **In-Claude setup** (`/setup`). The skill uses `AskUserQuestion` to present the picker. It then runs `tools/install.sh install --components <list>` to apply the chosen components.
+1. **Bootstrap.** One curl line. Clones the repo to `~/.claude-personal-starter/`, copies `skills/setup/SKILL.md` into `~/.claude/skills/setup/`. Nothing else.
+2. **`/setup`.** The user runs `claude`, types `/setup`. The skill instructions tell the agent to:
+   - `git pull` the repo for any updates.
+   - List components by reading `components/*/component.json`.
+   - Group by category and present checkboxes via `AskUserQuestion`.
+   - For each picked component, apply it using normal Read/Edit/Bash tools.
+   - Show the concatenated `INSTALL.md` content as "next steps" (commands the user runs in a fresh Claude session, like Gmail OAuth).
 
-Subsequent re-runs of `/setup` read the manifest to show current state and let the user add/remove components. `git pull` followed by `tools/install.sh upgrade` brings in new component versions without touching the user's selection.
-
-## Component Model
-
-A component is a self-contained directory under `tools/components/<name>/`:
+## Component Schema
 
 ```
-tools/components/tool-gmail/
-├── component.json                ← metadata
-├── version.txt                   ← semver
-├── claude-md-fragment.md         ← optional — block to append/merge into ~/.claude/CLAUDE.md
-├── settings-fragment.json        ← optional — JSON to deep-merge into ~/.claude/settings.json
-├── hooks/                        ← optional — files to copy into ~/.claude/hooks/
-├── skills/                       ← optional — skill directories to copy into ~/.claude/skills/
-├── agents/                       ← optional — agent files to copy into ~/.claude/agents/
-└── setup-notes.md                ← optional — shown to the user after install ("now run X to finish setup")
+components/<id>/
+├── component.json    REQUIRED — picker metadata
+├── claude-md.md      OPTIONAL — content to append to CLAUDE.md (with optional <<PLACEHOLDERS>>)
+├── settings.json     OPTIONAL — partial settings to merge
+├── hooks/            OPTIONAL — files to copy into ~/.claude/hooks/
+├── skills/           OPTIONAL — directories to copy into ~/.claude/skills/
+└── INSTALL.md        OPTIONAL — markdown shown to user as post-install steps
 ```
 
-**`component.json` schema:**
+`component.json`:
 
 ```json
 {
   "id": "tool-gmail",
   "name": "Gmail",
   "category": "tools",
-  "description": "Send, read, search, and triage Gmail via Google MCP. Installs Google Workspace skills (gws-gmail-*) and configures the MCP server.",
+  "description": "Send, read, search, and triage Gmail. Uses the standard Google Workspace MCP that ships with Claude Code; no skills are bundled here. After install you run the Gmail authenticate command from a fresh session.",
   "recommended": false,
-  "exclusive_group": null,
-  "depends_on": [],
-  "conflicts_with": [],
-  "post_install_action_required": "Run /authenticate google-workspace to authorize Gmail access."
+  "exclusive_group": null
 }
 ```
 
-Fields:
+Categories used: `safety`, `working-directory`, `identity`, `tools`, `skills`. New categories are fine — the picker just groups by whatever it finds.
 
-- `category` — `safety`, `working-directory`, `tools`, `skills`, `identity`. Used to group in the picker.
-- `recommended` — true means pre-checked in the picker. Used for things like the destructive-command deny list.
-- `exclusive_group` — non-null means "pick at most one in this group" (radio behavior). The two safety profiles share `"exclusive_group": "safety"`.
-- `depends_on` / `conflicts_with` — referential integrity. If you tick `skill-weekly-digest` it auto-ticks `tool-google-calendar`.
+`exclusive_group` non-null means radio behavior in the picker (pick one).
 
-**Identity block:** the "Who you are" CLAUDE.md section is treated as a special component (`identity-block`) that, when ticked, prompts the user with one open-ended question via `AskUserQuestion` and writes the answer verbatim into a labeled block in `CLAUDE.md`. Skippable; editable later via `/setup`.
+## Placeholder substitution
 
-## CLAUDE.md Composition
+Two known placeholders the `/setup` skill substitutes before writing CLAUDE.md:
 
-`~/.claude/CLAUDE.md` is assembled from component fragments using labeled markers, similar to the `tugboat-tools` managed-import pattern:
+- `<<IDENTITY>>` — replaced with the user's free-text answer to "who are you, what do you mostly use this for?"
+- `<<WORKING_DIR>>` — replaced with the working directory path the user picked (default `~/Work`).
 
-```markdown
-# >>> claude-personal-starter: identity — managed, edit between markers
-<identity content from /setup prompt or user edits>
-# <<< claude-personal-starter: identity
+For hooks, the same `<<WORKING_DIR>>` substitution applies before copying. (The strict-safety hook needs to know which directory to fence Write/Edit to, and we don't ship a manifest for it to read at runtime.)
 
-# >>> claude-personal-starter: safety-strict — managed, regenerated by /setup
-<strict safety doctrine fragment>
-# <<< claude-personal-starter: safety-strict
+## How `/setup` applies a component
 
-# >>> claude-personal-starter: tool-gmail — managed, regenerated by /setup
-<Gmail tool notes fragment>
-# <<< claude-personal-starter: tool-gmail
-```
+This is the heart of the system. The SKILL.md is one document of instructions the agent follows. For each picked component, the agent:
 
-- Content **between markers** is regenerated by `/setup`. Users should not edit it; their edits will be lost on the next run.
-- Exception: the `identity` block. Users are expected to edit it. `/setup` only writes it if it is empty.
-- Content **outside any markers** is never touched by `/setup`. Users can add their own freeform sections at the top or bottom of the file.
+1. **CLAUDE.md edit.** Reads `components/<id>/claude-md.md`. Substitutes placeholders. Reads the user's `~/.claude/CLAUDE.md` (or treats absent as empty). If a section header from the fragment already exists, replaces that section; otherwise appends to the end. The agent uses Read + Edit, no parser library.
+2. **settings.json merge.** Reads `components/<id>/settings.json`. Reads user's `~/.claude/settings.json` (or initializes from a base if absent). Unions `permissions.allow` and `permissions.deny` arrays. Combines `hooks` by matcher + command. Shallow-merges `env`. Writes back. The agent does this manually using Read + parsing JSON in its head + Write.
+3. **Hooks copy.** Reads each file in `components/<id>/hooks/`. Substitutes `<<WORKING_DIR>>` if present. Writes to `~/.claude/hooks/<filename>`. Marks executable.
+4. **Skills copy.** Recursively copies `components/<id>/skills/` into `~/.claude/skills/`.
+5. **INSTALL.md.** Concatenates with notes from other newly-applied components. Shown to the user at the end as "Next steps."
 
-`tools/install.sh` is responsible for parsing the existing file, removing managed blocks for components the user is removing, inserting blocks for components the user is adding, and leaving everything else alone.
+The agent may make small judgment calls (e.g., "your settings.json doesn't have a `permissions` key yet, I'm adding it"). That's fine — that's the whole point of having an agent do it instead of a Python script.
 
-## settings.json Composition
+## Removing a component
 
-`~/.claude/settings.json` is a deep-merge of every selected component's `settings-fragment.json`, plus a base file:
+Re-running `/setup` and unticking a previously-picked component is the removal path. The agent reads the component to know what it added (the section header in CLAUDE.md, the entries in settings.json, the file paths in hooks/skills) and removes those. No manifest needed because the agent is smart enough to look at both the component definition and the user's current state.
 
-```json
-{
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "permissions": {
-    "defaultMode": "auto",
-    "allow": [],
-    "deny": []
-  },
-  "hooks": {},
-  "env": {}
-}
-```
+## Bootstrap
 
-- `defaultMode: "auto"` is set by the base file regardless of safety profile. The deny list and hooks enforce safety; auto mode is a UX default that prevents prompting on allowlisted tools.
-- `permissions.allow` and `permissions.deny` are unioned across components.
-- `hooks.PreToolUse` (etc.) are merged by matcher.
-- `env` is shallow-merged; later components override earlier ones for the same key (but this should be rare).
+`bootstrap.sh`:
 
-If the user already has a `~/.claude/settings.json`, `tools/install.sh` reads it, removes the managed components' contributions (tracked by id in the manifest), adds the new ones, writes back. Anything the user added manually outside the managed fields is preserved.
+1. Verify `git` and `claude` are on PATH.
+2. Clone `https://github.com/Tugboat-Solutions-Inc/claude-personal-starter.git` to `~/.claude-personal-starter/` (or `git pull` if it already exists).
+3. Copy `skills/setup/SKILL.md` into `~/.claude/skills/setup/SKILL.md`.
+4. Print "Run `claude` then type `/setup`."
 
-## Categories and Initial Components
+That's it. Nothing else gets installed.
 
-These are the components shipped in v1. New ones are added by dropping a directory under `tools/components/` and bumping the catalog.
+## Update flow
 
-### Safety (exclusive group — pick one)
+- New component released → `git pull` (run by `/setup` on next invocation) → user sees the new option in the picker.
+- Component contents changed → user re-ticks it via `/setup` → agent re-applies.
+- Component removed from catalog → existing installations keep working; the picker just doesn't show it.
 
-Members of the `"exclusive_group": "safety"` group. v1 ships two; new safety profiles (e.g., `safety-attorney`) can be added later by dropping in another component with the same exclusive group.
+## Initial component set (v2)
 
-- **`safety-strict`** — Hooks block destructive commands (`rm -rf`, `sudo`, force pushes, hard resets, `defaults write`, `launchctl`, `diskutil`, `security`). Hooks block network egress (`curl`, `wget`, `scp`, `rsync`). Working-directory hook fences Write/Edit to the chosen working directory. System paths (`/etc`, `/Library`, `/System`, `/usr`, `~/Library`) denied for Write/Edit. Recommended for non-technical users.
-- **`safety-chill`** — System paths denied for Write/Edit (same as strict). Destructive shell commands not blocked. Network egress allowed. No working-directory fence. Recommended for technical users who want freedom.
+Same nine as v1, restructured under the new shape:
 
-### Working directory
+- **Safety** (`exclusive_group: "safety"`): `safety-strict`, `safety-chill`
+- **Working directory**: `working-directory`
+- **Identity**: `identity-block`
+- **Tools**: `tool-gmail`, `tool-google-calendar`, `tool-outlook`
+- **Skills**: `skill-email-triage`, `skill-weekly-digest`
 
-- **`working-directory`** — Required component. Prompts for a path (default `~/Work/`). Creates the directory if it doesn't exist. Adds a marker block to CLAUDE.md naming the convention. `safety-strict`'s hook uses this path; `safety-chill` ignores it.
+## What this is NOT
 
-### Tools
-
-Each tool is independent. Tick what you have/use:
-
-- **`tool-outlook`** — Installs Apple Mail AppleScript helpers for reading/drafting against an M365 mailbox synced to Mail.app. Adds an allowlist for `osascript -e 'tell application "Mail"...'`.
-- **`tool-icloud-mail`** — Same Apple Mail bridge, framed for iCloud Mail users.
-- **`tool-gmail`** — Adds Google Workspace MCP + `gws-gmail-*` skills (send, read, triage, watch, reply, reply-all, forward). Requires post-install OAuth.
-- **`tool-google-calendar`** — Adds `gws-calendar` skills + MCP. Post-install OAuth.
-- **`tool-google-drive`** — Adds `gws-drive` skills + MCP. Post-install OAuth.
-- **`tool-google-docs`** — Adds `gws-docs` skills.
-- **`tool-google-sheets`** — Adds `gws-sheets` skills.
-- **`tool-google-slides`** — Adds `gws-slides` skills.
-- **`tool-google-tasks`** — Adds `gws-tasks` skills.
-- **`tool-macos-calendar`** — AppleScript helpers for Calendar.app + Contacts.app (M365 or iCloud).
-- **`tool-linear`** — Installs the `linear` skill. Requires `LINEAR_API_KEY`.
-- **`tool-stripe`** — Installs Stripe MCP. Requires Stripe API key.
-
-### Skills
-
-Workflow patterns that compose multiple tools:
-
-- **`skill-email-triage`** — Unread inbox summary by sender/subject/urgency. Works with any email tool ticked. (Generalizes `attorney-claude-starter/skills/email-triage`.)
-- **`skill-weekly-digest`** — Weekly summary of meetings + unread email count. Requires `tool-gmail` + `tool-google-calendar` (or Outlook/macOS equivalents).
-- **`skill-meeting-prep`** — Agenda + attendees + linked docs for the next meeting. Requires `tool-google-calendar` + `tool-google-drive` or `tool-google-docs`.
-- **`skill-folder-summary`** — Summarize a project folder into a structured `NOTES.md`. (Generalizes `case-file-summary`.) No tool dependency.
-- **`skill-doc-drafting`** — Draft Google Docs from prompts using Aaron's tone-of-voice patterns. Requires `tool-google-docs`.
-
-### Identity
-
-- **`identity-block`** — Prompts once for a free-text "who are you, what do you do, what do you mostly use this for" answer. Inserts it verbatim into the CLAUDE.md `identity` managed block. Skippable. Editable later.
-
-## The `/setup` Skill
-
-A skill at `~/.claude/skills/setup/SKILL.md`. When invoked:
-
-1. **Read state.** Check `~/.claude/.claude-personal-starter.json` (the manifest) for already-installed components. If absent, treat as fresh install.
-2. **Refresh source.** `git -C ~/.claude-personal-starter pull` (the cloned repo lives there; bootstrap puts it in place). Skip with `--offline` flag.
-3. **Show categories in order.** For each category:
-   - Read all `component.json` files in `tools/components/` belonging to that category.
-   - Present them via `AskUserQuestion`. Use `multiSelect: true` except for `exclusive_group` categories.
-   - Pre-tick already-installed and `recommended: true` components.
-   - Show description as the option's `description`.
-4. **Apply changes.** Compute the diff (added / removed / unchanged). Call `tools/install.sh apply --add <list> --remove <list>`. The script:
-   - For each removed component: remove its CLAUDE.md block, settings fragment, hooks, skills.
-   - For each added component: append CLAUDE.md block, deep-merge settings, copy hooks/skills/agents.
-   - Update the manifest.
-5. **Handle the identity block.** If `identity-block` is selected and the existing identity block is empty, ask the open-ended question. If non-empty, leave it alone (user has edited it).
-6. **Show post-install actions.** Concatenate `setup-notes.md` from every newly added component. Common case: a Google Workspace tool tells the user to start a new Claude session and run the corresponding `authenticate` MCP tool (e.g., `mcp__claude_ai_Gmail__authenticate`) to authorize access. Exact command is per-component; the spec does not prescribe it.
-7. **Confirm.** Show a summary: what was added, what was removed, what's now installed. Done.
-
-## Bootstrap Script
-
-`bootstrap.sh` is the curl-able entry point. Hosted on the repo's `main` branch via raw GitHub URL or on a stable redirect. It:
-
-1. Verifies Claude Code is installed (`command -v claude`). Errors with install instructions if not.
-2. Verifies the user is authenticated (`claude --help` works without OAuth flow).
-3. Clones the repo to `~/.claude-personal-starter/` (or pulls if it exists).
-4. Copies `skills/setup/` into `~/.claude/skills/setup/`.
-5. Prints: "Setup skill installed. Run `claude` and type `/setup` to pick your components."
-
-That's it. The bootstrap does not configure anything else. All real configuration happens in `/setup`.
-
-## Update Flow
-
-- **New component released.** Aaron pushes to the repo. Users run `/setup`; the skill does `git pull` first, then presents the picker with the new component visible.
-- **Component upgraded.** Bump `version.txt`. Users run `/setup` and tick "upgrade installed components" — the skill detects version drift and reapplies the new fragments.
-- **Component removed from the catalog.** Existing installations keep working; the picker just doesn't show it. Aaron's responsibility not to break the schema.
+- **Not a package manager.** No version pinning, dependency graph, lockfile, or update notifications.
+- **Not a runtime.** Nothing runs in the background. The agent applies things and goes away.
+- **Not a wrapper around Claude Code.** Anthropic owns Claude Code installation, OAuth, and the official MCP install paths. We just hand off.
+- **Not a bundle for non-technical users.** It assumes the user has already installed Claude Code and authed. If they need a fully wrapped one-double-click install, that's `pi-agent-bundle`'s job — separate product, separate audience.
 
 ## Distribution
 
-- **Repo:** public, `Tugboat-Solutions-Inc/claude-personal-starter`. Public license (MIT). Anyone can fork.
-- **Curl line:** `curl -fsSL https://raw.githubusercontent.com/Tugboat-Solutions-Inc/claude-personal-starter/main/bootstrap.sh | sh`
-- **Updates:** standard git pull, surfaced through `/setup` re-runs.
-- **No telemetry, no callbacks, no per-user tracking.** Aaron has no idea who's installed it unless they tell him.
-
-## How This Subsumes Existing Bundles
-
-- **`attorney-claude-starter`** — Becomes an overlay repo (or a set of optional components like `safety-attorney`, `tool-westlaw-stub`, `skill-demand-letter-draft`, `skill-medical-timeline`) that lives in this same repo or a sibling. The four legal-specific skills convert to components; the strict-safety profile + attorney CLAUDE.md doctrine becomes `safety-attorney` (an exclusive-group sibling of `safety-strict` and `safety-chill`).
-- **`pi-agent-bundle`** — Separate product. It bundles the Pi runtime for non-technical Tugboat users with zero CLI experience. This starter assumes Claude Code is already installed. The two don't compete; pi-agent-bundle could eventually be retired by adding a Pi-runtime bootstrap shim to this starter, but that's a future decision.
-- **`tugboat-tools`** — Stays as-is for Tugboat developers. The personal starter could ship `tool-tugboat-team` and `tool-tugboat-claims` components that overlap with what's in tugboat-tools, but the dev-only skills (platform-architecture, schema-and-data, ai-and-integrations) stay in tugboat-tools.
-
-## Open Questions (resolved or deferred)
-
-- **Component versioning across user installs.** Deferred. v1 uses simple "latest in main" semantics. If a user wants a pinned version, they can clone a specific tag.
-- **Cross-platform.** v1 is macOS-only. Apple Mail and AppleScript tools are macOS-specific. Hooks are Python (cross-platform). Linux support deferred to v2.
-- **MCP server installation.** The tool components reference MCP servers. v1 assumes the user installs MCPs separately via `claude mcp add`. The components only install skills and configure allowlists. Future: have `tool-gmail` etc. invoke `claude mcp add google-workspace` during install.
-
-## Implementation Plan (high level)
-
-1. Repo scaffold + bootstrap script.
-2. `tools/install.sh` — adapted from `tugboat-tools/tools/install.sh`. Handles CLAUDE.md block parsing, settings.json deep-merge, manifest tracking.
-3. `skills/setup/SKILL.md` — the in-Claude TUI driver.
-4. Initial component set — safety-strict, safety-chill, working-directory, identity-block, plus two or three tools (gmail, google-calendar, outlook) and two skills (email-triage, weekly-digest) to validate the pattern end-to-end.
-5. Fill in remaining components iteratively. Each is small (a fragment, a skill or two, maybe a hook) and follows the same template.
-6. `attorney-claude-starter` migration: convert its four skills and safety doctrine into components in this repo, mark the existing folder as superseded.
-
-Detailed plan to follow via writing-plans skill.
+- **Repo:** `Tugboat-Solutions-Inc/claude-personal-starter`. Public. MIT.
+- **Curl:** `curl -fsSL https://raw.githubusercontent.com/Tugboat-Solutions-Inc/claude-personal-starter/main/bootstrap.sh | sh`
+- **Updates:** standard `git pull`, surfaced via re-running `/setup`.
+- **No telemetry.** Aaron has no idea who installed it unless they tell him.
