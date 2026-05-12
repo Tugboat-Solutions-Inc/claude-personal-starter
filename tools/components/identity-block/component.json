@@ -1,0 +1,10 @@
+{
+  "id": "identity-block",
+  "name": "Identity (who you are)",
+  "category": "identity",
+  "description": "One free-text prompt during /setup — describe who you are and what you mostly use this for. Goes verbatim into CLAUDE.md. Skippable. Editable later.",
+  "recommended": true,
+  "exclusive_group": null,
+  "depends_on": [],
+  "conflicts_with": []
+}
